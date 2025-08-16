@@ -6,9 +6,10 @@ import requests
 import os
 
 # ---------------- CONFIG ----------------
-CHANNEL_ACCESS_TOKEN = os.getenv("Zv8W8x3YgffzXnnI95dJsfIvrU0on5agdFuQ/0OvK4Wf1KBLADD4MOD/FLlXPo3D5tAi6qwHLfOWaHeuTut9LrUuIxRhiBQqRp2EQbv9qUr9ilTXuHwNctYXH/ccpdSRzyu0Z6gJy6Y/Kz3Wg9SKXwdB04t89/1O/w1cDnyilFU=")
-CHANNEL_SECRET = os.getenv("72873ed1e2c05e7ea560e617be24be08")
-AQICN_API = os.getenv("96cff56bd643945ff35d0343b77ccb7419c3a820")
+# อ่านค่าจาก Environment Variables
+CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
+CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
+AQICN_API = os.getenv("AQICN_API")
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
@@ -141,6 +142,7 @@ def handle_message(event):
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มประเมินอาการ"))
 
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
