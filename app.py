@@ -62,6 +62,24 @@ def callback():
 # ---------------- Event Handler ----------------
 user_data = {}  # เก็บ session ผู้ใช้
 
+def symptoms_quick_reply():
+    return QuickReply(items=[
+        QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
+        QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
+        QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="อาการ:หายใจมีเสียงวี้ด")),
+        QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="อาการ:แน่นหน้าอก")),
+        QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="อาการ:เหนื่อยง่าย")),
+        QuickReplyButton(action=MessageAction(label="ถัดไป", text="symptom:done"))
+    ])
+
+def city_quick_reply():
+    return QuickReply(items=[
+        QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
+        QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
+        QuickReplyButton(action=MessageAction(label="ภูเก็ต", text="เมือง:ภูเก็ต")),
+        QuickReplyButton(action=MessageAction(label="ขอนแก่น", text="เมือง:ขอนแก่น"))
+    ])
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.lower().strip()
@@ -124,17 +142,17 @@ def handle_message(event):
         if text in ["family:y", "family:n"]:
             user_data[user_id]["family"] = text.split(":")[1] == "y"
             user_data[user_id]["step"] = "symptoms"
-            symptoms_qr = QuickReply(items=[
-                QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
-                QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
-                QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="อาการ:หายใจมีเสียงวี้ด")),
-                QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="อาการ:แน่นหน้าอก")),
-                QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="อาการ:เหนื่อยง่าย")),
-                QuickReplyButton(action=MessageAction(label="ถัดไป", text="symptom:done"))
-            ])
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):", quick_reply=symptoms_qr))
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):",
+                                quick_reply=symptoms_quick_reply())
+            )
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (มี / ไม่มี)",quick_reply=symptoms_qr))
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (มี / ไม่มี)",
+                                quick_reply=symptoms_quick_reply())
+            )
         return
 
     # ---------------- อาการ ----------------
@@ -143,18 +161,25 @@ def handle_message(event):
             symptom = text.replace("อาการ:", "")
             if symptom not in user_data[user_id]["symptoms"]:
                 user_data[user_id]["symptoms"].append(symptom)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ เพิ่มอาการ: {symptom}"))
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=f"✅ เพิ่มอาการ: {symptom}\nเลือกอาการอื่นต่อ หรือกด 'ถัดไป' เมื่อเสร็จ:",
+                    quick_reply=symptoms_quick_reply()
+                )
+            )
         elif text == "symptom:done":
             user_data[user_id]["step"] = "city"
-            city_qr = QuickReply(items=[
-                QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
-                QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
-                QuickReplyButton(action=MessageAction(label="ภูเก็ต", text="เมือง:ภูเก็ต")),
-                QuickReplyButton(action=MessageAction(label="ขอนแก่น", text="เมือง:ขอนแก่น"))
-            ])
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_qr))
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_quick_reply())
+            )
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกอาการจากตัวเลือก หรือกด 'ถัดไป'"))
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="❌ กรุณาเลือกอาการจากตัวเลือก หรือกด 'ถัดไป'",
+                                quick_reply=symptoms_quick_reply())
+            )
         return
 
     # ---------------- เมือง และสรุป ----------------
@@ -162,10 +187,8 @@ def handle_message(event):
         if text.startswith("เมือง:"):
             city = text.replace("เมือง:", "")
             data = user_data.get(user_id)
-
             aqi = get_aqi(city)
             level, advice = assess_risk(data["age"], data["smoker"], data["family"], data["symptoms"], aqi)
-
             reply = f"""
 📌 แบบประเมินความเสี่ยงโรคหอบหืด
 อายุ: {data["age"]}
@@ -185,8 +208,8 @@ def handle_message(event):
         return
 
     # ---------------- fallback ----------------
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มทำแบบสอบถาม หรือ 'รีเซ็ต' เพื่อเริ่มใหม่"))
-    
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        text="พิมพ์ 'ประเมิน' เพื่อเริ่มทำแบบสอบถาม หรือ 'รีเซ็ต' เพื่อเริ่มใหม่"))
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
