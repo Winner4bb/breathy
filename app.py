@@ -129,13 +129,13 @@ def handle_message(event):
         return
 
     # ---------------- PROCESS STEPS ----------------
-    #if user_id not in user_data:
+    if user_id not in user_data:
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มทำแบบสอบถาม หรือ 'รีเซ็ต' เพื่อเริ่มใหม่")
         )
         return
-
+        
     step = user_data[user_id]["step"]
 
     # ----- STEP: AGE -----
@@ -156,14 +156,14 @@ def handle_message(event):
 
     # ----- STEP: SMOKER -----
     if step == "smoker":
-        if re.search(r'smoker\s*[:=]?\s*y', text, re.IGNORECASE) or "สูบบุหรี่" in text:
+        if text == "smoker:y":
             user_data[user_id]["smoker"] = True
             user_data[user_id]["step"] = "family"
             line_bot_api.reply_message(
                 event.reply_token,
                 TextSendMessage(text="ครอบครัวของคุณมีประวัติหอบหืดหรือไม่?", quick_reply=get_family_qr())
             )
-        elif re.search(r'smoker\s*[:=]?\s*n', text, re.IGNORECASE) or "ไม่สูบบุหรี่" in text:
+        elif text == "smoker:n":
             user_data[user_id]["smoker"] = False
             user_data[user_id]["step"] = "family"
             line_bot_api.reply_message(
@@ -179,7 +179,7 @@ def handle_message(event):
 
     # ----- STEP: FAMILY -----
     if step == "family":
-        if re.search(r'family\s*[:=]?\s*y', text, re.IGNORECASE) or "มี" in text:
+        if text == "family:y":
             user_data[user_id]["family"] = True
             user_data[user_id]["step"] = "symptoms"
             line_bot_api.reply_message(
@@ -189,7 +189,7 @@ def handle_message(event):
                     quick_reply=get_symptoms_qr()
                 )
             )
-        elif re.search(r'family\s*[:=]?\s*n', text, re.IGNORECASE) or "ไม่มี" in text:
+        elif text == "family:n":
             user_data[user_id]["family"] = False
             user_data[user_id]["step"] = "symptoms"
             line_bot_api.reply_message(
@@ -219,7 +219,7 @@ def handle_message(event):
                     quick_reply=get_symptoms_qr()
                 )
             )
-        elif "symptom:done" in text or "ถัดไป" in text:
+        elif text == "symptom:done":
             user_data[user_id]["step"] = "city"
             line_bot_api.reply_message(
                 event.reply_token,
@@ -234,7 +234,7 @@ def handle_message(event):
 
     # ----- STEP: CITY -----
     if step == "city":
-        if text.startswith("เมือง:") or any(c in text for c in ["กรุงเทพ", "เชียงใหม่", "ภูเก็ต", "ขอนแก่น"]):
+        if text.startswith("เมือง:"):
             city = text.replace("เมือง:", "").strip()
             data = user_data[user_id]
             aqi = get_aqi(city)
