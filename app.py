@@ -64,14 +64,24 @@ def handle_message(event):
     text = event.message.text.lower()
     user_id = event.source.user_id
 
+    # เริ่มต้น flow
     if text.startswith("ประเมิน"):
-        user_data[user_id] = {"symptoms":[], "age": None, "smoker": None, "family": None}
+        user_data[user_id] = {"step": "age", "age": None, "smoker": None, "family": None, "symptoms": []}
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):"))
         return
 
-    if user_data.get(user_id) and user_data[user_id]["age"] is None:
+    data = user_data.get(user_id)
+    if not data:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มประเมินอาการ"))
+        return
+
+    step = data["step"]
+
+    # ---------------- Step: Age ----------------
+    if step == "age":
         try:
-            user_data[user_id]["age"] = int(text)
+            data["age"] = int(text)
+            data["step"] = "smoker"
             qr = QuickReply(items=[
                 QuickReplyButton(action=MessageAction(label="สูบบุหรี่", text="smoker:y")),
                 QuickReplyButton(action=MessageAction(label="ไม่สูบบุหรี่", text="smoker:n"))
@@ -81,29 +91,38 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่ตัวเลขอายุ"))
         return
 
-    if user_data.get(user_id) and (text.startswith("smoker:") or text.startswith("family:")):
-        if text.startswith("smoker:"):
-            user_data[user_id]["smoker"] = text.split(":")[1] == "y"
-            qr = QuickReply(items=[
-                QuickReplyButton(action=MessageAction(label="ครอบครัวมีประวัติหอบหืด", text="family:y")),
-                QuickReplyButton(action=MessageAction(label="ไม่มีประวัติครอบครัว", text="family:n"))
-            ])
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ประวัติครอบครัว?", quick_reply=qr))
-        elif text.startswith("family:"):
-            user_data[user_id]["family"] = text.split(":")[1] == "y"
-            symptoms_qr = QuickReply(items=[
-                QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
-                QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
-                QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="อาการ:หายใจมีเสียงวี้ด")),
-                QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="อาการ:แน่นหน้าอก")),
-                QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="อาการ:เหนื่อยง่าย"))
-            ])
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (สามารถเลือกหลายครั้ง):", quick_reply=symptoms_qr))
+    # ---------------- Step: Smoker ----------------
+    if step == "smoker" and text.startswith("smoker:"):
+        data["smoker"] = text.split(":")[1] == "y"
+        data["step"] = "family"
+        qr = QuickReply(items=[
+            QuickReplyButton(action=MessageAction(label="ครอบครัวมีประวัติหอบหืด", text="family:y")),
+            QuickReplyButton(action=MessageAction(label="ไม่มีประวัติครอบครัว", text="family:n"))
+        ])
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ประวัติครอบครัว?", quick_reply=qr))
         return
 
-    if text.startswith("อาการ:"):
+    # ---------------- Step: Family ----------------
+    if step == "family" and text.startswith("family:"):
+        data["family"] = text.split(":")[1] == "y"
+        data["step"] = "symptoms"
+        symptoms_qr = QuickReply(items=[
+            QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
+            QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
+            QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="อาการ:หายใจมีเสียงวี้ด")),
+            QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="อาการ:แน่นหน้าอก")),
+            QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="อาการ:เหนื่อยง่าย"))
+        ])
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (สามารถเลือกหลายครั้ง):", quick_reply=symptoms_qr))
+        return
+
+    # ---------------- Step: Symptoms ----------------
+    if step == "symptoms" and text.startswith("อาการ:"):
         symptom = text.replace("อาการ:","")
-        user_data[user_id]["symptoms"].append(symptom)
+        if symptom not in data["symptoms"]:
+            data["symptoms"].append(symptom)
+        # หลังจากเลือกอาการแล้วไปเลือกเมือง
+        data["step"] = "city"
         city_qr = QuickReply(items=[
             QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
             QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
@@ -113,19 +132,18 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_qr))
         return
 
-    if text.startswith("เมือง:"):
+    # ---------------- Step: City ----------------
+    if step == "city" and text.startswith("เมือง:"):
         city = text.replace("เมือง:","")
-        data = user_data.get(user_id)
-        if data:
-            age = data["age"]
-            smoker = data["smoker"]
-            family_history = data["family"]
-            symptoms = data["symptoms"]
+        age = data["age"]
+        smoker = data["smoker"]
+        family_history = data["family"]
+        symptoms = data["symptoms"]
 
-            aqi = get_aqi(city)
-            level, advice = assess_risk(age, smoker, family_history, symptoms, aqi)
+        aqi = get_aqi(city)
+        level, advice = assess_risk(age, smoker, family_history, symptoms, aqi)
 
-            reply = f"""
+        reply = f"""
 📌 แบบประเมินความเสี่ยงโรคหอบหืด
 อายุ: {age}, สูบบุหรี่: {smoker}, ครอบครัว: {family_history}
 อาการ: {', '.join(symptoms)}
@@ -135,8 +153,14 @@ def handle_message(event):
 ⚠️ ระดับความเสี่ยง: {level}
 💡 คำแนะนำ: {advice}
 """
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-            user_data[user_id] = {"symptoms":[], "age": None, "smoker": None, "family": None}
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+        # ปิด flow
+        user_data[user_id]["step"] = "completed"
+        return
+
+    # ---------------- Completed / Other ----------------
+    if step == "completed":
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="คุณได้ทำการประเมินแล้ว หากต้องการประเมินใหม่ พิมพ์ 'ประเมิน'"))
         return
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มประเมินอาการ"))
