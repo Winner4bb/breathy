@@ -150,7 +150,7 @@ def handle_message(event):
             if 1 <= age <= 120:
                 user_data[user_id]["age"] = age
                 user_data[user_id]["step"] = "ask_smoker"
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="คุณสูบบุหรี่หรือไม่?", quick_reply=qr_smoker()))
+                #line_bot_api.reply_message(event.reply_token, TextSendMessage(text="คุณสูบบุหรี่หรือไม่?", quick_reply=qr_smoker()))
                 return
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⚠️ กรุณาใส่อายุเป็นตัวเลข 1–120"))
         return
@@ -162,7 +162,7 @@ def handle_message(event):
             if val in ["y", "n"]:
                 user_data[user_id]["smoker"] = (val == "y")
                 user_data[user_id]["step"] = "ask_family"
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="มีประวัติหอบหืดในครอบครัวหรือไม่?", quick_reply=qr_family()))
+                #line_bot_api.reply_message(event.reply_token, TextSendMessage(text="มีประวัติหอบหืดในครอบครัวหรือไม่?", quick_reply=qr_family()))
                 return
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⚠️ กรุณาเลือกด้วยปุ่มด้านล่าง", quick_reply=qr_smoker()))
         return
@@ -174,7 +174,7 @@ def handle_message(event):
             if val in ["y", "n"]:
                 user_data[user_id]["family"] = (val == "y")
                 user_data[user_id]["step"] = "ask_symptoms"
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (เลือกได้หลายครั้ง) แล้วกด 'เลือกเสร็จแล้ว'", quick_reply=qr_symptoms()))
+                #line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (เลือกได้หลายครั้ง) แล้วกด 'เลือกเสร็จแล้ว'", quick_reply=qr_symptoms()))
                 return
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⚠️ กรุณาเลือกด้วยปุ่มด้านล่าง", quick_reply=qr_family()))
         return
@@ -191,7 +191,7 @@ def handle_message(event):
         elif text in ["symptoms:done", "เลือกเสร็จแล้ว"]:
             if user_data[user_id]["symptoms"]:
                 user_data[user_id]["step"] = "ask_city"
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=qr_city()))
+                #line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=qr_city()))
                 return
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⚠️ ต้องเลือกอย่างน้อย 1 อาการ", quick_reply=qr_symptoms()))
