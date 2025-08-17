@@ -3,11 +3,12 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, QuickReply, QuickReplyButton, MessageAction
 import requests
+import os
 
 # ---------------- CONFIG ----------------
-CHANNEL_ACCESS_TOKEN = 'lFcBQEqk0Tb9IIegBap2ZoI8sufSPEqf2kcLQ87AuzeCN2AIqW1vGfn3aUromnhyiycsa1XgsmNWsb4lMPtKC3ju1Hr4ZkEk7sddE9WqIoBhZA+OS/UyMcjvEx6wi8K6n26Ha7zVn89149SS1C54JQdB04t89/1O/w1cDnyilFU='
-CHANNEL_SECRET = '1b2627cb031b2ccafd0afd46d19b9c21'
-AQICN_API = '96cff56bd643945ff35d0343b77ccb7419c3a820'
+CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
+CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
+AQICN_API = os.getenv("AQICN_API")
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
@@ -56,23 +57,18 @@ def callback():
     return 'OK'
 
 # ---------------- Event Handler ----------------
-user_data = {}  # เก็บ session ผู้ใช้
+user_data = {}
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.lower()
     user_id = event.source.user_id
 
-    # เริ่ม Quick Reply
     if text.startswith("ประเมิน"):
         user_data[user_id] = {"symptoms":[], "age": None, "smoker": None, "family": None}
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):")
-        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):"))
         return
 
-    # รับอายุ
     if user_data.get(user_id) and user_data[user_id]["age"] is None:
         try:
             user_data[user_id]["age"] = int(text)
@@ -85,7 +81,6 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่ตัวเลขอายุ"))
         return
 
-    # รับข้อมูลสูบบุหรี่ / ครอบครัว
     if user_data.get(user_id) and (text.startswith("smoker:") or text.startswith("family:")):
         if text.startswith("smoker:"):
             user_data[user_id]["smoker"] = text.split(":")[1] == "y"
@@ -96,7 +91,6 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ประวัติครอบครัว?", quick_reply=qr))
         elif text.startswith("family:"):
             user_data[user_id]["family"] = text.split(":")[1] == "y"
-            # ส่ง Quick Reply อาการ
             symptoms_qr = QuickReply(items=[
                 QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
                 QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
@@ -107,11 +101,9 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (สามารถเลือกหลายครั้ง):", quick_reply=symptoms_qr))
         return
 
-    # รับอาการ
     if text.startswith("อาการ:"):
         symptom = text.replace("อาการ:","")
         user_data[user_id]["symptoms"].append(symptom)
-        # ส่ง Quick Reply เมือง
         city_qr = QuickReply(items=[
             QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
             QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
@@ -121,7 +113,6 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_qr))
         return
 
-    # รับเมืองและประเมิน
     if text.startswith("เมือง:"):
         city = text.replace("เมือง:","")
         data = user_data.get(user_id)
@@ -145,13 +136,11 @@ def handle_message(event):
 💡 คำแนะนำ: {advice}
 """
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-            # ล้าง session
             user_data[user_id] = {"symptoms":[], "age": None, "smoker": None, "family": None}
         return
 
-    # ข้อความอื่น
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มประเมินอาการ"))
 
-# ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run(port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
