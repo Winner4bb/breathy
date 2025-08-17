@@ -7,6 +7,8 @@ from linebot.models import (
 )
 import requests
 import os
+import unicodedata
+import re
 
 # ---------------- CONFIG ----------------
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
@@ -95,11 +97,15 @@ def callback():
 # ---------------- Event Handler ----------------
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    text = event.message.text.strip()
+    raw_text = event.message.text
+    # Normalize text
+    text = unicodedata.normalize('NFC', raw_text).strip()
     user_id = event.source.user_id
 
+    print(f"[DEBUG] user_id={user_id}, text={repr(text)}")  # debug
+
     # ---------------- RESET ----------------
-    if text.lower() in ["รีเซ็ต", "reset"]:
+    if re.search(r'\b(รีเซ็ต|reset)\b', text, re.IGNORECASE):
         user_data.pop(user_id, None)
         line_bot_api.reply_message(
             event.reply_token,
@@ -124,7 +130,6 @@ def handle_message(event):
 
     # ---------------- PROCESS STEPS ----------------
     if user_id not in user_data:
-        # ถ้า user ยังไม่เริ่ม session
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มทำแบบสอบถาม หรือ 'รีเซ็ต' เพื่อเริ่มใหม่")
@@ -151,8 +156,15 @@ def handle_message(event):
 
     # ----- STEP: SMOKER -----
     if step == "smoker":
-        if text in ["smoker:y", "smoker:n"]:
-            user_data[user_id]["smoker"] = text.split(":")[1] == "y"
+        if re.search(r'smoker\s*[:=]?\s*y', text, re.IGNORECASE) or "สูบบุหรี่" in text:
+            user_data[user_id]["smoker"] = True
+            user_data[user_id]["step"] = "family"
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="ครอบครัวของคุณมีประวัติหอบหืดหรือไม่?", quick_reply=get_family_qr())
+            )
+        elif re.search(r'smoker\s*[:=]?\s*n', text, re.IGNORECASE) or "ไม่สูบบุหรี่" in text:
+            user_data[user_id]["smoker"] = False
             user_data[user_id]["step"] = "family"
             line_bot_api.reply_message(
                 event.reply_token,
@@ -167,8 +179,18 @@ def handle_message(event):
 
     # ----- STEP: FAMILY -----
     if step == "family":
-        if text in ["family:y", "family:n"]:
-            user_data[user_id]["family"] = text.split(":")[1] == "y"
+        if re.search(r'family\s*[:=]?\s*y', text, re.IGNORECASE) or "มี" in text:
+            user_data[user_id]["family"] = True
+            user_data[user_id]["step"] = "symptoms"
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):",
+                    quick_reply=get_symptoms_qr()
+                )
+            )
+        elif re.search(r'family\s*[:=]?\s*n', text, re.IGNORECASE) or "ไม่มี" in text:
+            user_data[user_id]["family"] = False
             user_data[user_id]["step"] = "symptoms"
             line_bot_api.reply_message(
                 event.reply_token,
@@ -187,8 +209,8 @@ def handle_message(event):
     # ----- STEP: SYMPTOMS -----
     if step == "symptoms":
         if text.startswith("อาการ:"):
-            symptom = text.replace("อาการ:", "")
-            if symptom not in user_data[user_id]["symptoms"]:
+            symptom = text.replace("อาการ:", "").strip()
+            if symptom and symptom not in user_data[user_id]["symptoms"]:
                 user_data[user_id]["symptoms"].append(symptom)
             line_bot_api.reply_message(
                 event.reply_token,
@@ -197,7 +219,7 @@ def handle_message(event):
                     quick_reply=get_symptoms_qr()
                 )
             )
-        elif text == "symptom:done":
+        elif "symptom:done" in text or "ถัดไป" in text:
             user_data[user_id]["step"] = "city"
             line_bot_api.reply_message(
                 event.reply_token,
@@ -212,8 +234,8 @@ def handle_message(event):
 
     # ----- STEP: CITY -----
     if step == "city":
-        if text.startswith("เมือง:"):
-            city = text.replace("เมือง:", "")
+        if text.startswith("เมือง:") or any(c in text for c in ["กรุงเทพ", "เชียงใหม่", "ภูเก็ต", "ขอนแก่น"]):
+            city = text.replace("เมือง:", "").strip()
             data = user_data[user_id]
             aqi = get_aqi(city)
             level, advice = assess_risk(data["age"], data["smoker"], data["family"], data["symptoms"], aqi)
