@@ -67,18 +67,25 @@ def handle_message(event):
     text = event.message.text.lower()
     user_id = event.source.user_id
 
-    # ปุ่มรีเซ็ท Quick Reply
+    # Quick Reply รีเซ็ท
     qr_reset = QuickReply(items=[
         QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
     ])
 
-    # เริ่มประเมิน / รีเซ็ท
-    if text.startswith("ประเมิน") or text == "รีเซ็ท" or user_id not in user_data:
+    # รีเซ็ท session และหยุดการทำงานทันที
+    if text == "รีเซ็ท":
+        user_data[user_id] = None
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="ระบบถูกรีเซ็ทแล้ว\nพิมพ์ 'ประเมิน' เพื่อเริ่มใหม่"
+        ))
+        return
+
+    # เริ่มประเมิน
+    if text.startswith("ประเมิน") or user_id not in user_data or user_data.get(user_id) is None:
         user_data[user_id] = {"step":"age", "age":None, "smoker":None, "family":None, "symptoms":[]}
-        line_bot_api.reply_message(
-            event.reply_token, 
-            TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):", quick_reply=qr_reset)
-        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="กรุณาใส่อายุของคุณ (ตัวเลข):", quick_reply=qr_reset
+        ))
         return
 
     data = user_data.get(user_id)
