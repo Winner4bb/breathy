@@ -74,7 +74,7 @@ def handle_message(event):
     if text == "รีเซ็ท":
         user_data[user_id] = None
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
-            text="ระบบถูกรีเซทแล้ว\nพิมพ์ 'ประเมิน' เพื่อเริ่มใหม่"
+            text="ระบบถูกรีเซ็ทแล้ว\nพิมพ์ 'ประเมิน' เพื่อเริ่มใหม่"
         ))
         return
 
@@ -188,7 +188,7 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_qr))
             return
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาเลือกจากตัวเลือก", quick_reply=qr_reset))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาเลือกจากตัวเลือก หรือพิมพ์ 'อาการ:ไอ', 'อาการ:จาม', 'อาการ:หายใจมีเสียงวี้ด', 'อาการ:แน่นหน้าอก', 'อาการ:เหนื่อยง่าย', 'ถัดไป'", quick_reply=qr_reset))
             return
 
     # Step: city
@@ -216,7 +216,7 @@ def handle_message(event):
             user_data[user_id] = None  # ล้าง session
             return
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาเลือกจากตัวเลือก", quick_reply=qr_reset))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาเลือกจากตัวเลือก หรือพิมพ์ 'เมือง:กรุงเทพ', 'เมือง:เชียงใหม่', 'เมือง:ภูเก็ต', 'เมือง:ขอนแก่น'", quick_reply=qr_reset))
             return
 
     # ข้อความอื่น
