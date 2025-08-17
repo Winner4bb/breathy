@@ -52,46 +52,44 @@ def assess_risk(age, smoker, family_history, symptoms, aqi):
 def normalize_city(text):
     cities = {
         "กรุงเทพ": "เมือง:กรุงเทพ",
+        "เมือง:กรุงเทพ": "เมือง:กรุงเทพ",
         "เชียงใหม่": "เมือง:เชียงใหม่",
+        "เมือง:เชียงใหม่": "เมือง:เชียงใหม่",
         "ภูเก็ต": "เมือง:ภูเก็ต",
-        "ขอนแก่น": "เมือง:ขอนแก่น"
+        "เมือง:ภูเก็ต": "เมือง:ภูเก็ต",
+        "ขอนแก่น": "เมือง:ขอนแก่น",
+        "เมือง:ขอนแก่น": "เมือง:ขอนแก่น"
     }
-    return cities.get(text, text)
+    return cities.get(text, None)
 
 def normalize_symptom(text):
     symptoms = {
         "ไอ": "อาการ:ไอ",
+        "อาการ:ไอ": "อาการ:ไอ",
         "จาม": "อาการ:จาม",
+        "อาการ:จาม": "อาการ:จาม",
         "หายใจมีเสียงวี้ด": "อาการ:หายใจมีเสียงวี้ด",
+        "อาการ:หายใจมีเสียงวี้ด": "อาการ:หายใจมีเสียงวี้ด",
         "แน่นหน้าอก": "อาการ:แน่นหน้าอก",
-        "เหนื่อยง่าย": "อาการ:เหนื่อยง่าย"
+        "อาการ:แน่นหน้าอก": "อาการ:แน่นหน้าอก",
+        "เหนื่อยง่าย": "อาการ:เหนื่อยง่าย",
+        "อาการ:เหนื่อยง่าย": "อาการ:เหนื่อยง่าย"
     }
-    return symptoms.get(text, text)
+    return symptoms.get(text, None)
 
 def normalize_family(text):
     if text in ["ไม่มีประวัติครอบครัว", "family:n"]:
         return "ไม่มีประวัติครอบครัว"
     if text in ["มีประวัติครอบครัว", "family:y"]:
         return "มีประวัติครอบครัว"
-    return text
+    return None
 
 def normalize_smoker(text):
     if text in ["สูบบุหรี่", "smoker:y"]:
         return "สูบบุหรี่"
     if text in ["ไม่สูบบุหรี่", "smoker:n"]:
         return "ไม่สูบบุหรี่"
-    return text
-
-def normalize_step_input(step, text):
-    if step == "city":
-        return normalize_city(text)
-    if step == "symptom":
-        return normalize_symptom(text)
-    if step == "family":
-        return normalize_family(text)
-    if step == "smoker":
-        return normalize_smoker(text)
-    return text
+    return None
 
 # ---------------- Webhook ----------------
 @app.route("/callback", methods=['POST'])
@@ -112,10 +110,8 @@ def handle_message(event):
     text = event.message.text.strip().lower()
     user_id = event.source.user_id
 
-    # Quick Reply รีเซ็ท
     qr_reset = QuickReply(items=[QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))])
 
-    # รีเซ็ท session และหยุดการทำงานทันที
     if text == "รีเซ็ท":
         user_data[user_id] = None
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
@@ -123,7 +119,6 @@ def handle_message(event):
         ))
         return
 
-    # เริ่มประเมิน
     if text.startswith("ประเมิน") or user_id not in user_data or user_data.get(user_id) is None:
         user_data[user_id] = {"step": "age", "age": None, "smoker": None, "family": None, "symptoms": []}
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
@@ -137,7 +132,6 @@ def handle_message(event):
         return
 
     step = data.get("step")
-    text = normalize_step_input(step, text)
 
     # Step: age
     if step == "age":
@@ -159,9 +153,10 @@ def handle_message(event):
 
     # Step: smoker
     if step == "smoker":
-        if text == "สูบบุหรี่":
+        norm = normalize_smoker(text)
+        if norm == "สูบบุหรี่":
             data["smoker"] = True
-        elif text == "ไม่สูบบุหรี่":
+        elif norm == "ไม่สูบบุหรี่":
             data["smoker"] = False
         else:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(
@@ -178,9 +173,10 @@ def handle_message(event):
 
     # Step: family
     if step == "family":
-        if text == "มีประวัติครอบครัว":
+        norm = normalize_family(text)
+        if norm == "มีประวัติครอบครัว":
             data["family"] = True
-        elif text == "ไม่มีประวัติครอบครัว":
+        elif norm == "ไม่มีประวัติครอบครัว":
             data["family"] = False
         else:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(
@@ -202,8 +198,9 @@ def handle_message(event):
 
     # Step: symptom
     if step == "symptom":
-        if text.startswith("อาการ:"):
-            symptom = text.replace("อาการ:", "")
+        norm = normalize_symptom(text)
+        if norm:
+            symptom = norm.replace("อาการ:", "")
             if symptom not in data["symptoms"]:
                 data["symptoms"].append(symptom)
             symptoms_qr = QuickReply(items=[
@@ -234,13 +231,14 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_qr))
             return
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาเลือกจากตัวเลือก หรือพิมพ์ 'อาการ:ไอ', 'อาการ:จาม', 'อาการ:หายใจมีเสียงวี้ด', 'อาการ:แน่นหน้าอก', 'อาการ:เหนื่อยง่าย', 'ถัดไป'", quick_reply=qr_reset))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาเลือกจากตัวเลือก หรือพิมพ์ชื่ออาการ เช่น 'ไอ', 'จาม', 'หายใจมีเสียงวี้ด', 'แน่นหน้าอก', 'เหนื่อยง่าย', หรือ 'ถัดไป'", quick_reply=qr_reset))
             return
 
     # Step: city
     if step == "city":
-        if text.startswith("เมือง:"):
-            city = text.replace("เมือง:", "")
+        norm = normalize_city(text)
+        if norm:
+            city = norm.replace("เมือง:", "")
             age = data["age"]
             smoker = data["smoker"]
             family_history = data["family"]
@@ -262,7 +260,7 @@ def handle_message(event):
             user_data[user_id] = None  # ล้าง session
             return
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาเลือกจากตัวเลือก หรือพิมพ์ 'กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'ขอนแก่น' หรือ 'เมือง:กรุงเทพ' ฯลฯ", quick_reply=qr_reset))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาเลือกจากตัวเลือก หรือพิมพ์ชื่อเมือง เช่น 'กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'ขอนแก่น'", quick_reply=qr_reset))
             return
 
     # ข้อความอื่น
