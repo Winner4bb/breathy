@@ -107,7 +107,7 @@ def handle_message(event):
         )
         return
 
-    # ---------------- START ----------------
+    # ---------------- เริ่มต้น ----------------
     if text.startswith("ประเมิน"):
         user_data[user_id] = {
             "step": "age",
@@ -122,16 +122,19 @@ def handle_message(event):
         )
         return
 
-    # ถ้า user ไม่มี session ให้ fallback
+    # ---------------- STEP PROCESS ----------------
     if user_id not in user_data:
+        # fallback สำหรับผู้ใช้ที่ยังไม่ได้เริ่ม
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มทำแบบสอบถาม หรือ 'รีเซ็ต' เพื่อเริ่มใหม่")
         )
         return
 
-    # ---------------- STEP: AGE ----------------
-    if user_data[user_id]["step"] == "age":
+    step = user_data[user_id]["step"]
+
+    # ---------------- อายุ ----------------
+    if step == "age":
         if text.isdigit():
             user_data[user_id]["age"] = int(text)
             user_data[user_id]["step"] = "smoker"
@@ -146,8 +149,8 @@ def handle_message(event):
             )
         return
 
-    # ---------------- STEP: SMOKER ----------------
-    if user_data[user_id]["step"] == "smoker":
+    # ---------------- สูบบุหรี่ ----------------
+    elif step == "smoker":
         if text in ["smoker:y", "smoker:n"]:
             user_data[user_id]["smoker"] = text.split(":")[1] == "y"
             user_data[user_id]["step"] = "family"
@@ -158,12 +161,15 @@ def handle_message(event):
         else:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (สูบบุหรี่ / ไม่สูบ)", quick_reply=get_smoker_qr())
+                TextSendMessage(
+                    text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (สูบบุหรี่ / ไม่สูบ)",
+                    quick_reply=get_smoker_qr()
+                )
             )
         return
 
-    # ---------------- STEP: FAMILY ----------------
-    if user_data[user_id]["step"] == "family":
+    # ---------------- ครอบครัว ----------------
+    elif step == "family":
         if text in ["family:y", "family:n"]:
             user_data[user_id]["family"] = text.split(":")[1] == "y"
             user_data[user_id]["step"] = "symptoms"
@@ -177,12 +183,15 @@ def handle_message(event):
         else:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (มี / ไม่มี)", quick_reply=get_family_qr())
+                TextSendMessage(
+                    text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (มี / ไม่มี)",
+                    quick_reply=get_family_qr()
+                )
             )
         return
 
-    # ---------------- STEP: SYMPTOMS ----------------
-    if user_data[user_id]["step"] == "symptoms":
+    # ---------------- อาการ ----------------
+    elif step == "symptoms":
         if text.startswith("อาการ:"):
             symptom = text.replace("อาการ:", "")
             if symptom not in user_data[user_id]["symptoms"]:
@@ -198,38 +207,46 @@ def handle_message(event):
             user_data[user_id]["step"] = "city"
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=get_city_qr())
+                TextSendMessage(
+                    text="เลือกเมืองที่จะไป:",
+                    quick_reply=get_city_qr()
+                )
             )
         else:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="❌ กรุณาเลือกอาการจากตัวเลือก หรือกด 'ถัดไป'", quick_reply=get_symptoms_qr())
+                TextSendMessage(
+                    text="❌ กรุณาเลือกอาการจากตัวเลือก หรือกด 'ถัดไป'",
+                    quick_reply=get_symptoms_qr()
+                )
             )
         return
 
-    # ---------------- STEP: CITY ----------------
-    if user_data[user_id]["step"] == "city":
+    # ---------------- เมือง และสรุป ----------------
+    elif step == "city":
         if text.startswith("เมือง:"):
             city = text.replace("เมือง:", "")
             data = user_data[user_id]
-
             aqi = get_aqi(city)
             level, advice = assess_risk(data["age"], data["smoker"], data["family"], data["symptoms"], aqi)
 
             reply = f"""
 📌 แบบประเมินความเสี่ยงโรคหอบหืด
-อายุ: {data['age']}
-สูบบุหรี่: {"ใช่" if data['smoker'] else "ไม่ใช่"}
-ครอบครัว: {"มี" if data['family'] else "ไม่มี"}
-อาการ: {', '.join(data['symptoms']) if data['symptoms'] else "ไม่มี"}
+อายุ: {data["age"]}
+สูบบุหรี่: {"ใช่" if data["smoker"] else "ไม่ใช่"}
+ครอบครัว: {"มี" if data["family"] else "ไม่มี"}
+อาการ: {', '.join(data["symptoms"]) if data["symptoms"] else "ไม่มี"}
 
 🌫 AQI ({city}): {aqi if aqi is not None else 'ไม่สามารถดึงค่าได้'}
 
 ⚠️ ระดับความเสี่ยง: {level}
 💡 คำแนะนำ: {advice}
 """
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-            user_data.pop(user_id, None)
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=reply)
+            )
+            user_data.pop(user_id, None)  # เคลียร์ session
         else:
             line_bot_api.reply_message(
                 event.reply_token,
