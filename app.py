@@ -8,32 +8,35 @@ from linebot.models import (
 import requests
 import os
 import unicodedata
-import re
-import Levenshtein # เพิ่มไลบรารีสำหรับ Fuzzy Matching
+import Levenshtein
+import redis
+import json
 
 # ---------------- CONFIG ----------------
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
 AQICN_API = os.getenv("AQICN_API")
+REDIS_URL = os.getenv("REDIS_URL")  # เช่น redis://:password@host:port
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 app = Flask(__name__)
 
+# ---------------- Redis ----------------
+r = redis.from_url(REDIS_URL, decode_responses=True)  # decode_responses=True เพื่อให้ได้ string
+
 # ---------------- ฟังก์ชัน ----------------
 def get_aqi(city):
-    """ดึงค่า AQI จาก API ตามชื่อเมือง"""
     url = f"https://api.waqi.info/feed/{city}/?token={AQICN_API}"
     try:
-        r = requests.get(url).json()
-        if r.get('status') == 'ok':
-            return r['data']['aqi']
-    except requests.exceptions.RequestException as e:
+        r_api = requests.get(url).json()
+        if r_api.get('status') == 'ok':
+            return r_api['data']['aqi']
+    except Exception as e:
         print(f"Error fetching AQI: {e}")
     return None
 
 def assess_risk(age, smoker, family_history, symptoms, aqi):
-    """ประเมินความเสี่ยงและให้คำแนะนำตามข้อมูลที่ได้รับ"""
     score = 0
     if age < 12 or age > 60:
         score += 1
@@ -46,18 +49,13 @@ def assess_risk(age, smoker, family_history, symptoms, aqi):
         score += 2
 
     if score <= 2:
-        level = "ต่ำ"
-        advice = "เดินทางได้ตามปกติ ดูแลสุขภาพทั่วไป"
+        return "ต่ำ", "เดินทางได้ตามปกติ ดูแลสุขภาพทั่วไป"
     elif score <= 5:
-        level = "ปานกลาง"
-        advice = "ระวัง พกยา inhaler, ใส่หน้ากาก, หลีกเลี่ยงฝุ่น/ควัน"
+        return "ปานกลาง", "ระวัง พกยา inhaler, ใส่หน้ากาก, หลีกเลี่ยงฝุ่น/ควัน"
     else:
-        level = "สูง"
-        advice = "ไม่ควรเดินทาง ควรปรึกษาแพทย์ก่อน"
-    return level, advice
+        return "สูง", "ไม่ควรเดินทาง ควรปรึกษาแพทย์ก่อน"
 
 def is_close_match(user_text, target_keywords, threshold=2):
-    """ตรวจสอบว่าข้อความของผู้ใช้ใกล้เคียงกับคำหลักที่กำหนดหรือไม่"""
     for keyword in target_keywords:
         if Levenshtein.distance(user_text, keyword) <= threshold:
             return True
@@ -65,21 +63,18 @@ def is_close_match(user_text, target_keywords, threshold=2):
 
 # ---------------- QuickReply ----------------
 def get_smoker_qr():
-    """สร้าง QuickReply สำหรับคำถามเรื่องการสูบบุหรี่"""
     return QuickReply(items=[
         QuickReplyButton(action=MessageAction(label="สูบบุหรี่", text="smoker:y")),
         QuickReplyButton(action=MessageAction(label="ไม่สูบบุหรี่", text="smoker:n"))
     ])
 
 def get_family_qr():
-    """สร้าง QuickReply สำหรับคำถามเรื่องประวัติครอบครัว"""
     return QuickReply(items=[
         QuickReplyButton(action=MessageAction(label="มี", text="family:y")),
         QuickReplyButton(action=MessageAction(label="ไม่มี", text="family:n"))
     ])
 
 def get_symptoms_qr():
-    """สร้าง QuickReply สำหรับคำถามเรื่องอาการ"""
     return QuickReply(items=[
         QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
         QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
@@ -90,7 +85,6 @@ def get_symptoms_qr():
     ])
 
 def get_city_qr():
-    """สร้าง QuickReply สำหรับคำถามเรื่องเมือง"""
     return QuickReply(items=[
         QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
         QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
@@ -99,11 +93,8 @@ def get_city_qr():
     ])
 
 # ---------------- Webhook ----------------
-user_data = {}  # เก็บ session ผู้ใช้
-
 @app.route("/callback", methods=['POST'])
 def callback():
-    """Handle Callback จาก Line API"""
     signature = request.headers.get('X-Line-Signature', '')
     body = request.get_data(as_text=True)
     try:
@@ -115,16 +106,13 @@ def callback():
 # ---------------- Event Handler ----------------
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    """Handle ข้อความที่ผู้ใช้ส่งมา"""
     raw_text = event.message.text
-    text = unicodedata.normalize('NFC', raw_text).strip().lower()  # แปลงเป็นตัวพิมพ์เล็กทั้งหมด
+    text = unicodedata.normalize('NFC', raw_text).strip().lower()
     user_id = event.source.user_id
-
-    print(f"[DEBUG] user_id={user_id}, text={repr(text)}")
 
     # ---------------- RESET ----------------
     if is_close_match(text, ["รีเซ็ต", "reset"]):
-        user_data.pop(user_id, None)
+        r.delete(user_id)
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text="🔄 รีเซ็ตข้อมูลเรียบร้อยแล้ว\nพิมพ์ 'ประเมิน' เพื่อเริ่มใหม่")
@@ -133,165 +121,97 @@ def handle_message(event):
 
     # ---------------- START ----------------
     if is_close_match(text, ["ประเมิน", "ประเมิณ"]):
-        user_data[user_id] = {
-            "step": "age",
-            "age": None,
-            "smoker": None,
-            "family": None,
-            "symptoms": []
-        }
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):")
-        )
+        user_data = {"step":"age","age":None,"smoker":None,"family":None,"symptoms":[]}
+        r.set(user_id, json.dumps(user_data))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):"))
         return
 
-    # ---------------- PROCESS STEPS ----------------
-    if user_id not in user_data:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="กรุณาคัดลอกข้อความเดิมมาใส่อีกครั้ง")
-        )
+    # ---------------- LOAD SESSION ----------------
+    data_json = r.get(user_id)
+    if not data_json:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มทำแบบสอบถาม"))
         return
-        
-    step = user_data[user_id]["step"]
+    user_data = json.loads(data_json)
+    step = user_data.get("step")
 
-    # ----- STEP: AGE -----
-    if step == "age":
+    # ----- STEP AGE -----
+    if step=="age":
         if text.isdigit():
-            user_data[user_id]["age"] = int(text)
-            user_data[user_id]["step"] = "smoker"
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="คุณสูบบุหรี่หรือไม่?", quick_reply=get_smoker_qr())
-            )
+            user_data["age"]=int(text)
+            user_data["step"]="smoker"
+            r.set(user_id, json.dumps(user_data))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="คุณสูบบุหรี่หรือไม่?", quick_reply=get_smoker_qr()))
         else:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="❌ กรุณาใส่อายุเป็นตัวเลขอีกครั้ง")
-            )
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาใส่อายุเป็นตัวเลขอีกครั้ง"))
         return
 
-    # ----- STEP: SMOKER -----
-    if step == "smoker":
-        if is_close_match(text, ["smoker:y", "สูบบุหรี่", "ใช่", "สูบ"]):
-            user_data[user_id]["smoker"] = True
-            user_data[user_id]["step"] = "family"
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="ครอบครัวของคุณมีประวัติหอบหืดหรือไม่?", quick_reply=get_family_qr())
-            )
-        elif is_close_match(text, ["smoker:n", "ไม่สูบบุหรี่", "ไม่", "ไม่สูบ"]):
-            user_data[user_id]["smoker"] = False
-            user_data[user_id]["step"] = "family"
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="ครอบครัวของคุณมีประวัติหอบหืดหรือไม่?", quick_reply=get_family_qr())
-            )
+    # ----- STEP SMOKER -----
+    if step=="smoker":
+        if is_close_match(text, ["smoker:y","สูบบุหรี่","ใช่","สูบ"]):
+            user_data["smoker"]=True
+        elif is_close_match(text, ["smoker:n","ไม่สูบบุหรี่","ไม่","ไม่สูบ"]):
+            user_data["smoker"]=False
         else:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้", quick_reply=get_smoker_qr())
-            )
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือก", quick_reply=get_smoker_qr()))
+            return
+        user_data["step"]="family"
+        r.set(user_id, json.dumps(user_data))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ครอบครัวของคุณมีประวัติหอบหืดหรือไม่?", quick_reply=get_family_qr()))
         return
 
-    # ----- STEP: FAMILY -----
-    if step == "family":
-        if is_close_match(text, ["family:y", "มี", "ใช่"]):
-            user_data[user_id]["family"] = True
-            user_data[user_id]["step"] = "symptoms"
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(
-                    text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):",
-                    quick_reply=get_symptoms_qr()
-                )
-            )
-        elif is_close_match(text, ["family:n", "ไม่มี", "ไม่"]):
-            user_data[user_id]["family"] = False
-            user_data[user_id]["step"] = "symptoms"
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(
-                    text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):",
-                    quick_reply=get_symptoms_qr()
-                )
-            )
+    # ----- STEP FAMILY -----
+    if step=="family":
+        if is_close_match(text, ["family:y","มี","ใช่"]):
+            user_data["family"]=True
+        elif is_close_match(text, ["family:n","ไม่มี","ไม่"]):
+            user_data["family"]=False
         else:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้", quick_reply=get_family_qr())
-            )
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือก", quick_reply=get_family_qr()))
+            return
+        user_data["step"]="symptoms"
+        r.set(user_id, json.dumps(user_data))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):", quick_reply=get_symptoms_qr()))
         return
 
-    # ----- STEP: SYMPTOMS -----
-    if step == "symptoms":
+    # ----- STEP SYMPTOMS -----
+    if step=="symptoms":
         if text.startswith("อาการ:"):
-            symptom = text.replace("อาการ:", "").strip()
-            if symptom and symptom not in user_data[user_id]["symptoms"]:
-                user_data[user_id]["symptoms"].append(symptom)
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(
-                    text=f"✅ เพิ่มอาการ: {symptom}\nเลือกอาการอื่นต่อ หรือกด 'ถัดไป' เมื่อเสร็จ:",
-                    quick_reply=get_symptoms_qr()
-                )
-            )
-        elif is_close_match(text, ["symptom:done", "ถัดไป", "เสร็จสิ้น"]):
-            user_data[user_id]["step"] = "city"
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=get_city_qr())
-            )
+            symptom=text.replace("อาการ:","").strip()
+            if symptom and symptom not in user_data["symptoms"]:
+                user_data["symptoms"].append(symptom)
+            r.set(user_id, json.dumps(user_data))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ เพิ่มอาการ: {symptom}\nเลือกอาการอื่นต่อ หรือกด 'ถัดไป' เมื่อเสร็จ:", quick_reply=get_symptoms_qr()))
+            return
+        elif is_close_match(text, ["symptom:done","ถัดไป","เสร็จสิ้น"]):
+            user_data["step"]="city"
+            r.set(user_id, json.dumps(user_data))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=get_city_qr()))
+            return
         else:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="❌ กรุณาเลือกอาการจากตัวเลือก หรือกด 'ถัดไป'", quick_reply=get_symptoms_qr())
-            )
-        return
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกอาการจากตัวเลือก หรือกด 'ถัดไป'", quick_reply=get_symptoms_qr()))
+            return
 
-    # ----- STEP: CITY -----
-    if step == "city":
-        city_mapping = {
-            "เมือง:กรุงเทพ": "กรุงเทพ",
-            "เมือง:เชียงใหม่": "เชียงใหม่",
-            "เมือง:ภูเก็ต": "ภูเก็ต",
-            "เมือง:ขอนแก่น": "ขอนแก่น"
-        }
-        
-        city = None
-        if text in city_mapping:
-            city = city_mapping[text]
-        elif is_close_match(text, ["กรุงเทพ", "เชียงใหม่", "ภูเก็ต", "ขอนแก่น", "bangkok", "chiang mai", "phuket", "khon kaen"]):
-            # ตัวอย่างการใช้ fuzzy matching กับชื่อเมืองโดยตรง
-            if "กรุงเทพ" in text: city = "กรุงเทพ"
-            elif "เชียงใหม่" in text: city = "เชียงใหม่"
-            elif "ภูเก็ต" in text: city = "ภูเก็ต"
-            elif "ขอนแก่น" in text: city = "ขอนแก่น"
-            else: # ใช้ Levenshtein เพื่อหาเมืองที่ใกล้เคียงที่สุด
-                target_cities = ["กรุงเทพ", "เชียงใหม่", "ภูเก็ต", "ขอนแก่น"]
-                closest_city = min(target_cities, key=lambda c: Levenshtein.distance(text, c.lower()))
-                if Levenshtein.distance(text, closest_city.lower()) <= 2:
-                    city = closest_city
-        
+    # ----- STEP CITY -----
+    if step=="city":
+        cities=["กรุงเทพ","เชียงใหม่","ภูเก็ต","ขอนแก่น"]
+        city=None
+        for c in cities:
+            if c in text:
+                city=c
+                break
+        if not city:
+            closest=min(cities,key=lambda x: Levenshtein.distance(text,x.lower()))
+            if Levenshtein.distance(text,closest.lower())<=2:
+                city=closest
         if city:
-            data = user_data.get(user_id)
-            if not data:
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text="ข้อมูลของคุณหายไป กรุณาเริ่มใหม่ด้วยการพิมพ์ 'ประเมิน'")
-                )
-                return
-
-            aqi = get_aqi(city)
-            level, advice = assess_risk(data["age"], data["smoker"], data["family"], data["symptoms"], aqi)
-
-            reply = f"""
+            aqi=get_aqi(city)
+            level, advice=assess_risk(user_data["age"],user_data["smoker"],user_data["family"],user_data["symptoms"],aqi)
+            reply=f"""
 📌 แบบประเมินความเสี่ยงโรคหอบหืด
-อายุ: {data['age']}
-สูบบุหรี่: {"ใช่" if data['smoker'] else "ไม่ใช่"}
-ครอบครัว: {"มี" if data['family'] else "ไม่มี"}
-อาการ: {', '.join(data['symptoms']) if data['symptoms'] else "ไม่มี"}
+อายุ: {user_data['age']}
+สูบบุหรี่: {"ใช่" if user_data['smoker'] else "ไม่ใช่"}
+ครอบครัว: {"มี" if user_data['family'] else "ไม่มี"}
+อาการ: {', '.join(user_data['symptoms']) if user_data['symptoms'] else "ไม่มี"}
 
 🌫 AQI ({city}): {aqi if aqi is not None else "ไม่สามารถดึงค่าได้"}
 
@@ -299,10 +219,7 @@ def handle_message(event):
 💡 คำแนะนำ: {advice}
 """
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-            user_data.pop(user_id, None)  # เคลียร์ session หลังส่งผล
+            r.delete(user_id)  # ลบ session หลังส่งผล
         else:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="❌ กรุณาเลือกเมืองจากตัวเลือก", quick_reply=get_city_qr())
-            )
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกเมืองจากตัวเลือก", quick_reply=get_city_qr()))
         return
