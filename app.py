@@ -134,7 +134,7 @@ def handle_message(event):
             ])
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):", quick_reply=symptoms_qr))
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (มี / ไม่มี)"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (มี / ไม่มี)",quick_reply=symptoms_qr))
         return
 
     # ---------------- อาการ ----------------
