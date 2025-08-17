@@ -189,11 +189,11 @@ def handle_message(event):
                 text="กรุณาเลือกจากตัวเลือก หรือพิมพ์ 'มีประวัติครอบครัว', 'family:y', 'ไม่มีประวัติครอบครัว', 'family:n'", quick_reply=qr_reset))
             return
         symptoms_qr = QuickReply(items=[
-            QuickReplyButton(action=MessageAction(label="ไอ", text="ไอ")),
-            QuickReplyButton(action=MessageAction(label="จาม", text="จาม")),
-            QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="หายใจมีเสียงวี้ด")),
-            QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="แน่นหน้าอก")),
-            QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="เหนื่อยง่าย")),
+            QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
+            QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
+            QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="อาการ:หายใจมีเสียงวี้ด")),
+            QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="อาการ:แน่นหน้าอก")),
+            QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="อาการ:เหนื่อยง่าย")),
             QuickReplyButton(action=MessageAction(label="ถัดไป", text="ถัดไป")),
             QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
         ])
@@ -203,15 +203,17 @@ def handle_message(event):
 
     # Step: symptom
     if step == "symptom":
-        if text in ["ไอ", "จาม", "หายใจมีเสียงวี้ด", "แน่นหน้าอก", "เหนื่อยง่าย"]:
-            if text not in data["symptoms"]:
-                data["symptoms"].append(text)
+        norm = normalize_symptom(text)
+        if norm:
+            symptom = norm.replace("อาการ:", "")
+            if symptom not in data["symptoms"]:
+                data["symptoms"].append(symptom)
             symptoms_qr = QuickReply(items=[
-                QuickReplyButton(action=MessageAction(label="ไอ", text="ไอ")),
-                QuickReplyButton(action=MessageAction(label="จาม", text="จาม")),
-                QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="หายใจมีเสียงวี้ด")),
-                QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="แน่นหน้าอก")),
-                QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="เหนื่อยง่าย")),
+                QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
+                QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
+                QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="อาการ:หายใจมีเสียงวี้ด")),
+                QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="อาการ:แน่นหน้าอก")),
+                QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="อาการ:เหนื่อยง่าย")),
                 QuickReplyButton(action=MessageAction(label="ถัดไป", text="ถัดไป")),
                 QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
             ])
@@ -225,10 +227,10 @@ def handle_message(event):
                 return
             data["step"] = "city"
             city_qr = QuickReply(items=[
-                QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="กรุงเทพ")),
-                QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เชียงใหม่")),
-                QuickReplyButton(action=MessageAction(label="ภูเก็ต", text="ภูเก็ต")),
-                QuickReplyButton(action=MessageAction(label="ขอนแก่น", text="ขอนแก่น")),
+                QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
+                QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
+                QuickReplyButton(action=MessageAction(label="ภูเก็ต", text="เมือง:ภูเก็ต")),
+                QuickReplyButton(action=MessageAction(label="ขอนแก่น", text="เมือง:ขอนแก่น")),
                 QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
             ])
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_qr))
