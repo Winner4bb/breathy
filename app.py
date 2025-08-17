@@ -67,10 +67,18 @@ def handle_message(event):
     text = event.message.text.lower()
     user_id = event.source.user_id
 
-    # เริ่มประเมิน
-    if text.startswith("ประเมิน") or user_id not in user_data:
+    # ปุ่มรีเซ็ท Quick Reply
+    qr_reset = QuickReply(items=[
+        QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
+    ])
+
+    # เริ่มประเมิน / รีเซ็ท
+    if text.startswith("ประเมิน") or text == "รีเซ็ท" or user_id not in user_data:
         user_data[user_id] = {"step":"age", "age":None, "smoker":None, "family":None, "symptoms":[]}
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):"))
+        line_bot_api.reply_message(
+            event.reply_token, 
+            TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):", quick_reply=qr_reset)
+        )
         return
 
     data = user_data.get(user_id)
@@ -83,11 +91,12 @@ def handle_message(event):
             data["step"] = "smoker"
             qr = QuickReply(items=[
                 QuickReplyButton(action=MessageAction(label="สูบบุหรี่", text="smoker:y")),
-                QuickReplyButton(action=MessageAction(label="ไม่สูบบุหรี่", text="smoker:n"))
+                QuickReplyButton(action=MessageAction(label="ไม่สูบบุหรี่", text="smoker:n")),
+                QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
             ])
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="คุณสูบบุหรี่หรือไม่?", quick_reply=qr))
         except:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่ตัวเลขอายุ"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่ตัวเลขอายุ", quick_reply=qr_reset))
         return
 
     # Step: smoker
@@ -96,7 +105,8 @@ def handle_message(event):
         data["step"] = "family"
         qr = QuickReply(items=[
             QuickReplyButton(action=MessageAction(label="ครอบครัวมีประวัติหอบหืด", text="family:y")),
-            QuickReplyButton(action=MessageAction(label="ไม่มีประวัติครอบครัว", text="family:n"))
+            QuickReplyButton(action=MessageAction(label="ไม่มีประวัติครอบครัว", text="family:n")),
+            QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
         ])
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ประวัติครอบครัว?", quick_reply=qr))
         return
@@ -110,7 +120,8 @@ def handle_message(event):
             QuickReplyButton(action=MessageAction(label="จาม", text="อาการ:จาม")),
             QuickReplyButton(action=MessageAction(label="หายใจมีเสียงวี้ด", text="อาการ:หายใจมีเสียงวี้ด")),
             QuickReplyButton(action=MessageAction(label="แน่นหน้าอก", text="อาการ:แน่นหน้าอก")),
-            QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="อาการ:เหนื่อยง่าย"))
+            QuickReplyButton(action=MessageAction(label="เหนื่อยง่าย", text="อาการ:เหนื่อยง่าย")),
+            QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
         ])
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (สามารถเลือกหลายครั้ง):", quick_reply=symptoms_qr))
         return
@@ -120,14 +131,14 @@ def handle_message(event):
         symptom = text.replace("อาการ:", "")
         if symptom not in data["symptoms"]:
             data["symptoms"].append(symptom)
-        # ให้ user เลือกเมือง
+        data["step"] = "city"
         city_qr = QuickReply(items=[
             QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
             QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
             QuickReplyButton(action=MessageAction(label="ภูเก็ต", text="เมือง:ภูเก็ต")),
-            QuickReplyButton(action=MessageAction(label="ขอนแก่น", text="เมือง:ขอนแก่น"))
+            QuickReplyButton(action=MessageAction(label="ขอนแก่น", text="เมือง:ขอนแก่น")),
+            QuickReplyButton(action=MessageAction(label="รีเซ็ท", text="รีเซ็ท"))
         ])
-        data["step"] = "city"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_qr))
         return
 
@@ -152,13 +163,13 @@ def handle_message(event):
 ⚠️ ระดับความเสี่ยง: {level}
 💡 คำแนะนำ: {advice}
 """
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply, quick_reply=qr_reset))
         # ล้าง session
         user_data[user_id] = None
         return
 
     # ข้อความอื่น
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มประเมินอาการ"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มประเมินอาการ", quick_reply=qr_reset))
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
