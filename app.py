@@ -9,6 +9,7 @@ import requests
 import os
 import unicodedata
 import re
+import Levenshtein # เพิ่มไลบรารีสำหรับ Fuzzy Matching
 
 # ---------------- CONFIG ----------------
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
@@ -54,6 +55,13 @@ def assess_risk(age, smoker, family_history, symptoms, aqi):
         level = "สูง"
         advice = "ไม่ควรเดินทาง ควรปรึกษาแพทย์ก่อน"
     return level, advice
+
+def is_close_match(user_text, target_keywords, threshold=2):
+    """ตรวจสอบว่าข้อความของผู้ใช้ใกล้เคียงกับคำหลักที่กำหนดหรือไม่"""
+    for keyword in target_keywords:
+        if Levenshtein.distance(user_text, keyword) <= threshold:
+            return True
+    return False
 
 # ---------------- QuickReply ----------------
 def get_smoker_qr():
@@ -109,13 +117,13 @@ def callback():
 def handle_message(event):
     """Handle ข้อความที่ผู้ใช้ส่งมา"""
     raw_text = event.message.text
-    text = unicodedata.normalize('NFC', raw_text).strip()
+    text = unicodedata.normalize('NFC', raw_text).strip().lower()  # แปลงเป็นตัวพิมพ์เล็กทั้งหมด
     user_id = event.source.user_id
 
     print(f"[DEBUG] user_id={user_id}, text={repr(text)}")
 
     # ---------------- RESET ----------------
-    if re.search(r'\b(รีเซ็ต|reset)\b', text, re.IGNORECASE):
+    if is_close_match(text, ["รีเซ็ต", "reset"]):
         user_data.pop(user_id, None)
         line_bot_api.reply_message(
             event.reply_token,
@@ -124,7 +132,7 @@ def handle_message(event):
         return
 
     # ---------------- START ----------------
-    if re.search(r'^\s*ประเมิน\s*$', text):
+    if is_close_match(text, ["ประเมิน", "ประเมิณ"]):
         user_data[user_id] = {
             "step": "age",
             "age": None,
@@ -166,14 +174,14 @@ def handle_message(event):
 
     # ----- STEP: SMOKER -----
     if step == "smoker":
-        if text == "smoker:y" or re.search(r'สูบ', text):
+        if is_close_match(text, ["smoker:y", "สูบบุหรี่", "ใช่", "สูบ"]):
             user_data[user_id]["smoker"] = True
             user_data[user_id]["step"] = "family"
             line_bot_api.reply_message(
                 event.reply_token,
                 TextSendMessage(text="ครอบครัวของคุณมีประวัติหอบหืดหรือไม่?", quick_reply=get_family_qr())
             )
-        elif text == "smoker:n" or re.search(r'ไม่\s*สูบ', text):
+        elif is_close_match(text, ["smoker:n", "ไม่สูบบุหรี่", "ไม่", "ไม่สูบ"]):
             user_data[user_id]["smoker"] = False
             user_data[user_id]["step"] = "family"
             line_bot_api.reply_message(
@@ -189,7 +197,7 @@ def handle_message(event):
 
     # ----- STEP: FAMILY -----
     if step == "family":
-        if text == "family:y" or re.search(r'มี', text):
+        if is_close_match(text, ["family:y", "มี", "ใช่"]):
             user_data[user_id]["family"] = True
             user_data[user_id]["step"] = "symptoms"
             line_bot_api.reply_message(
@@ -199,7 +207,7 @@ def handle_message(event):
                     quick_reply=get_symptoms_qr()
                 )
             )
-        elif text == "family:n" or re.search(r'ไม่\s*มี', text):
+        elif is_close_match(text, ["family:n", "ไม่มี", "ไม่"]):
             user_data[user_id]["family"] = False
             user_data[user_id]["step"] = "symptoms"
             line_bot_api.reply_message(
@@ -229,7 +237,7 @@ def handle_message(event):
                     quick_reply=get_symptoms_qr()
                 )
             )
-        elif text == "symptom:done" or re.search(r'ถัดไป|เสร็จ', text):
+        elif is_close_match(text, ["symptom:done", "ถัดไป", "เสร็จสิ้น"]):
             user_data[user_id]["step"] = "city"
             line_bot_api.reply_message(
                 event.reply_token,
@@ -254,9 +262,18 @@ def handle_message(event):
         city = None
         if text in city_mapping:
             city = city_mapping[text]
-        elif re.search(r'กรุงเทพ|เชียงใหม่|ภูเก็ต|ขอนแก่น', text):
-            city = text.replace("เมือง:", "").strip()
-
+        elif is_close_match(text, ["กรุงเทพ", "เชียงใหม่", "ภูเก็ต", "ขอนแก่น", "bangkok", "chiang mai", "phuket", "khon kaen"]):
+            # ตัวอย่างการใช้ fuzzy matching กับชื่อเมืองโดยตรง
+            if "กรุงเทพ" in text: city = "กรุงเทพ"
+            elif "เชียงใหม่" in text: city = "เชียงใหม่"
+            elif "ภูเก็ต" in text: city = "ภูเก็ต"
+            elif "ขอนแก่น" in text: city = "ขอนแก่น"
+            else: # ใช้ Levenshtein เพื่อหาเมืองที่ใกล้เคียงที่สุด
+                target_cities = ["กรุงเทพ", "เชียงใหม่", "ภูเก็ต", "ขอนแก่น"]
+                closest_city = min(target_cities, key=lambda c: Levenshtein.distance(text, c.lower()))
+                if Levenshtein.distance(text, closest_city.lower()) <= 2:
+                    city = closest_city
+        
         if city:
             data = user_data.get(user_id)
             if not data:
