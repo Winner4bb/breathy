@@ -22,9 +22,12 @@ app = Flask(__name__)
 # ---------------- ฟังก์ชัน ----------------
 def get_aqi(city):
     url = f"https://api.waqi.info/feed/{city}/?token={AQICN_API}"
-    r = requests.get(url).json()
-    if r.get('status') == 'ok':
-        return r['data']['aqi']
+    try:
+        r = requests.get(url).json()
+        if r.get('status') == 'ok':
+            return r['data']['aqi']
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching AQI: {e}")
     return None
 
 def assess_risk(age, smoker, family_history, symptoms, aqi):
@@ -98,11 +101,10 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     raw_text = event.message.text
-    # Normalize text
     text = unicodedata.normalize('NFC', raw_text).strip()
     user_id = event.source.user_id
 
-    print(f"[DEBUG] user_id={user_id}, text={repr(text)}")  # debug
+    print(f"[DEBUG] user_id={user_id}, text={repr(text)}")
 
     # ---------------- RESET ----------------
     if re.search(r'\b(รีเซ็ต|reset)\b', text, re.IGNORECASE):
@@ -236,7 +238,14 @@ def handle_message(event):
     if step == "city":
         if text.startswith("เมือง:"):
             city = text.replace("เมือง:", "").strip()
-            data = user_data[user_id]
+            data = user_data.get(user_id)
+            if not data:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="ข้อมูลของคุณหายไป กรุณาเริ่มใหม่ด้วยการพิมพ์ 'ประเมิน'")
+                )
+                return
+
             aqi = get_aqi(city)
             level, advice = assess_risk(data["age"], data["smoker"], data["family"], data["symptoms"], aqi)
 
