@@ -21,7 +21,7 @@ app = Flask(__name__)
 def get_aqi(city):
     url = f"https://api.waqi.info/feed/{city}/?token={AQICN_API}"
     r = requests.get(url).json()
-    if r['status'] == 'ok':
+    if r.get('status') == 'ok':
         return r['data']['aqi']
     return None
 
@@ -48,21 +48,19 @@ def assess_risk(age, smoker, family_history, symptoms, aqi):
         advice = "ไม่ควรเดินทาง ควรปรึกษาแพทย์ก่อน"
     return level, advice
 
-# ---------------- Webhook ----------------
-@app.route("/callback", methods=['POST'])
-def callback():
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-    return 'OK'
+# ---------------- QuickReply ----------------
+def get_smoker_qr():
+    return QuickReply(items=[
+        QuickReplyButton(action=MessageAction(label="สูบบุหรี่", text="smoker:y")),
+        QuickReplyButton(action=MessageAction(label="ไม่สูบบุหรี่", text="smoker:n"))
+    ])
 
-# ---------------- Event Handler ----------------
-user_data = {}  # เก็บ session ผู้ใช้
+def get_family_qr():
+    return QuickReply(items=[
+        QuickReplyButton(action=MessageAction(label="มี", text="family:y")),
+        QuickReplyButton(action=MessageAction(label="ไม่มี", text="family:n"))
+    ])
 
-# QuickReply templates
 def get_symptoms_qr():
     return QuickReply(items=[
         QuickReplyButton(action=MessageAction(label="ไอ", text="อาการ:ไอ")),
@@ -73,18 +71,6 @@ def get_symptoms_qr():
         QuickReplyButton(action=MessageAction(label="ถัดไป", text="symptom:done"))
     ])
 
-def get_smoker_qr():
-    return QuickReply(items=[
-        QuickReplyButton(action=MessageAction(label="สูบบุหรี่", text="smoker:y")),
-        QuickReplyButton(action=MessageAction(label="ไม่สูบบุหรี่", text="smoker:n"))
-    ])
-
-def get_family_qr():
-    return QuickReply(items=[
-        QuickReplyButton(action=MessageAction(label="ครอบครัวมีประวัติหอบหืด", text="family:y")),
-        QuickReplyButton(action=MessageAction(label="ไม่มีประวัติครอบครัว", text="family:n"))
-    ])
-
 def get_city_qr():
     return QuickReply(items=[
         QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
@@ -93,6 +79,20 @@ def get_city_qr():
         QuickReplyButton(action=MessageAction(label="ขอนแก่น", text="เมือง:ขอนแก่น"))
     ])
 
+# ---------------- Webhook ----------------
+user_data = {}  # เก็บ session ผู้ใช้
+
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers.get('X-Line-Signature', '')
+    body = request.get_data(as_text=True)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+    return 'OK'
+
+# ---------------- Event Handler ----------------
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
@@ -107,7 +107,7 @@ def handle_message(event):
         )
         return
 
-    # ---------------- เริ่มต้น ----------------
+    # ---------------- START ----------------
     if text.startswith("ประเมิน"):
         user_data[user_id] = {
             "step": "age",
@@ -122,9 +122,9 @@ def handle_message(event):
         )
         return
 
-    # ---------------- STEP PROCESS ----------------
+    # ---------------- PROCESS STEPS ----------------
     if user_id not in user_data:
-        # fallback สำหรับผู้ใช้ที่ยังไม่ได้เริ่ม
+        # ถ้า user ยังไม่เริ่ม session
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มทำแบบสอบถาม หรือ 'รีเซ็ต' เพื่อเริ่มใหม่")
@@ -133,7 +133,7 @@ def handle_message(event):
 
     step = user_data[user_id]["step"]
 
-    # ---------------- อายุ ----------------
+    # ----- STEP: AGE -----
     if step == "age":
         if text.isdigit():
             user_data[user_id]["age"] = int(text)
@@ -149,8 +149,8 @@ def handle_message(event):
             )
         return
 
-    # ---------------- สูบบุหรี่ ----------------
-    elif step == "smoker":
+    # ----- STEP: SMOKER -----
+    if step == "smoker":
         if text in ["smoker:y", "smoker:n"]:
             user_data[user_id]["smoker"] = text.split(":")[1] == "y"
             user_data[user_id]["step"] = "family"
@@ -161,15 +161,12 @@ def handle_message(event):
         else:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(
-                    text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (สูบบุหรี่ / ไม่สูบ)",
-                    quick_reply=get_smoker_qr()
-                )
+                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้", quick_reply=get_smoker_qr())
             )
         return
 
-    # ---------------- ครอบครัว ----------------
-    elif step == "family":
+    # ----- STEP: FAMILY -----
+    if step == "family":
         if text in ["family:y", "family:n"]:
             user_data[user_id]["family"] = text.split(":")[1] == "y"
             user_data[user_id]["step"] = "symptoms"
@@ -183,15 +180,12 @@ def handle_message(event):
         else:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(
-                    text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้ (มี / ไม่มี)",
-                    quick_reply=get_family_qr()
-                )
+                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือกที่ให้ไว้", quick_reply=get_family_qr())
             )
         return
 
-    # ---------------- อาการ ----------------
-    elif step == "symptoms":
+    # ----- STEP: SYMPTOMS -----
+    if step == "symptoms":
         if text.startswith("อาการ:"):
             symptom = text.replace("อาการ:", "")
             if symptom not in user_data[user_id]["symptoms"]:
@@ -207,23 +201,17 @@ def handle_message(event):
             user_data[user_id]["step"] = "city"
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(
-                    text="เลือกเมืองที่จะไป:",
-                    quick_reply=get_city_qr()
-                )
+                TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=get_city_qr())
             )
         else:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(
-                    text="❌ กรุณาเลือกอาการจากตัวเลือก หรือกด 'ถัดไป'",
-                    quick_reply=get_symptoms_qr()
-                )
+                TextSendMessage(text="❌ กรุณาเลือกอาการจากตัวเลือก หรือกด 'ถัดไป'", quick_reply=get_symptoms_qr())
             )
         return
 
-    # ---------------- เมือง และสรุป ----------------
-    elif step == "city":
+    # ----- STEP: CITY -----
+    if step == "city":
         if text.startswith("เมือง:"):
             city = text.replace("เมือง:", "")
             data = user_data[user_id]
@@ -232,29 +220,21 @@ def handle_message(event):
 
             reply = f"""
 📌 แบบประเมินความเสี่ยงโรคหอบหืด
-อายุ: {data["age"]}
-สูบบุหรี่: {"ใช่" if data["smoker"] else "ไม่ใช่"}
-ครอบครัว: {"มี" if data["family"] else "ไม่มี"}
-อาการ: {', '.join(data["symptoms"]) if data["symptoms"] else "ไม่มี"}
+อายุ: {data['age']}
+สูบบุหรี่: {"ใช่" if data['smoker'] else "ไม่ใช่"}
+ครอบครัว: {"มี" if data['family'] else "ไม่มี"}
+อาการ: {', '.join(data['symptoms']) if data['symptoms'] else "ไม่มี"}
 
-🌫 AQI ({city}): {aqi if aqi is not None else 'ไม่สามารถดึงค่าได้'}
+🌫 AQI ({city}): {aqi if aqi is not None else "ไม่สามารถดึงค่าได้"}
 
 ⚠️ ระดับความเสี่ยง: {level}
 💡 คำแนะนำ: {advice}
 """
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=reply)
-            )
-            user_data.pop(user_id, None)  # เคลียร์ session
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+            user_data.pop(user_id, None)  # เคลียร์ session หลังส่งผล
         else:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="❌ กรุณาเลือกเมืองจากตัวเลือกที่ให้ไว้")
+                TextSendMessage(text="❌ กรุณาเลือกเมืองจากตัวเลือก", quick_reply=get_city_qr())
             )
         return
-
-# ---------------- RUN ----------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
