@@ -129,7 +129,7 @@ def handle_message(event):
         return
 
     # ---------------- PROCESS STEPS ----------------
-    if user_id not in user_data:
+    #if user_id not in user_data:
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มทำแบบสอบถาม หรือ 'รีเซ็ต' เพื่อเริ่มใหม่")
