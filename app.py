@@ -64,7 +64,6 @@ def handle_message(event):
     text = event.message.text.lower()
     user_id = event.source.user_id
 
-    # เริ่มต้น flow
     if text.startswith("ประเมิน"):
         user_data[user_id] = {"step": "age", "age": None, "smoker": None, "family": None, "symptoms": []}
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่อายุของคุณ (ตัวเลข):"))
@@ -77,7 +76,6 @@ def handle_message(event):
 
     step = data["step"]
 
-    # ---------------- Step: Age ----------------
     if step == "age":
         try:
             data["age"] = int(text)
@@ -91,7 +89,6 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="กรุณาใส่ตัวเลขอายุ"))
         return
 
-    # ---------------- Step: Smoker ----------------
     if step == "smoker" and text.startswith("smoker:"):
         data["smoker"] = text.split(":")[1] == "y"
         data["step"] = "family"
@@ -102,7 +99,6 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ประวัติครอบครัว?", quick_reply=qr))
         return
 
-    # ---------------- Step: Family ----------------
     if step == "family" and text.startswith("family:"):
         data["family"] = text.split(":")[1] == "y"
         data["step"] = "symptoms"
@@ -116,12 +112,10 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (สามารถเลือกหลายครั้ง):", quick_reply=symptoms_qr))
         return
 
-    # ---------------- Step: Symptoms ----------------
     if step == "symptoms" and text.startswith("อาการ:"):
         symptom = text.replace("อาการ:","")
         if symptom not in data["symptoms"]:
             data["symptoms"].append(symptom)
-        # หลังจากเลือกอาการแล้วไปเลือกเมือง
         data["step"] = "city"
         city_qr = QuickReply(items=[
             QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
@@ -132,7 +126,6 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกเมืองที่จะไป:", quick_reply=city_qr))
         return
 
-    # ---------------- Step: City ----------------
     if step == "city" and text.startswith("เมือง:"):
         city = text.replace("เมือง:","")
         age = data["age"]
@@ -154,17 +147,16 @@ def handle_message(event):
 💡 คำแนะนำ: {advice}
 """
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-        # ปิด flow
         user_data[user_id]["step"] = "completed"
         return
 
-    # ---------------- Completed / Other ----------------
     if step == "completed":
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="คุณได้ทำการประเมินแล้ว หากต้องการประเมินใหม่ พิมพ์ 'ประเมิน'"))
         return
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="พิมพ์ 'ประเมิน' เพื่อเริ่มประเมินอาการ"))
 
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
