@@ -146,31 +146,46 @@ def handle_message(event):
         return
 
     # ----- STEP SMOKER -----
-    if step=="smoker":
-        if is_close_match(text, ["smoker:y","สูบบุหรี่","ใช่","สูบ"]):
-            user_data["smoker"]=True
-        elif is_close_match(text, ["smoker:n","ไม่สูบบุหรี่","ไม่","ไม่สูบ"]):
-            user_data["smoker"]=False
+    if step == "smoker":
+        if text in ["smoker:y", "สูบบุหรี่", "ใช่", "สูบ"]:
+            user_data["smoker"] = True
+        elif text in ["smoker:n", "ไม่สูบบุหรี่", "ไม่", "ไม่สูบ"]:
+            user_data["smoker"] = False
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือก", quick_reply=get_smoker_qr()))
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือก", quick_reply=get_smoker_qr())
+            )
             return
-        user_data["step"]="family"
+        user_data["step"] = "family"
         r.set(user_id, json.dumps(user_data))
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ครอบครัวของคุณมีประวัติหอบหืดหรือไม่?", quick_reply=get_family_qr()))
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="ครอบครัวของคุณมีประวัติหอบหืดหรือไม่?", quick_reply=get_family_qr())
+        )
         return
 
     # ----- STEP FAMILY -----
-    if step=="family":
-        if is_close_match(text, ["family:y","มี","ใช่"]):
-            user_data["family"]=True
-        elif is_close_match(text, ["family:n","ไม่มี","ไม่"]):
-            user_data["family"]=False
+    if step == "family":
+        if text in ["family:y", "มี", "ใช่"]:
+            user_data["family"] = True
+        elif text in ["family:n", "ไม่มี", "ไม่"]:
+            user_data["family"] = False
         else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือก", quick_reply=get_family_qr()))
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="❌ กรุณาเลือกจากตัวเลือก", quick_reply=get_family_qr())
+            )
             return
-        user_data["step"]="symptoms"
+        user_data["step"] = "symptoms"
         r.set(user_id, json.dumps(user_data))
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):", quick_reply=get_symptoms_qr()))
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="เลือกอาการของคุณ (เลือกได้หลายครั้ง กด 'ถัดไป' เมื่อเสร็จ):",
+                quick_reply=get_symptoms_qr()
+            )
+        )
         return
 
     # ----- STEP SYMPTOMS -----
