@@ -23,7 +23,7 @@ handler = WebhookHandler(CHANNEL_SECRET)
 app = Flask(__name__)
 
 # ---------------- Redis ----------------
-r = redis.from_url(REDIS_URL, decode_responses=True)  # decode_responses=True เพื่อให้ได้ string
+r = redis.from_url(REDIS_URL, decode_responses=True)
 
 # ---------------- ฟังก์ชัน ----------------
 def get_aqi(city):
@@ -86,11 +86,37 @@ def get_symptoms_qr():
 
 def get_city_qr():
     return QuickReply(items=[
-        QuickReplyButton(action=MessageAction(label="กรุงเทพ", text="เมือง:กรุงเทพ")),
-        QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
+        QuickReplyButton(action=MessageAction(label="กรุงเทพมหานคร", text="เมือง:กรุงเทพมหานคร")),
+        QuickReplyButton(action=MessageAction(label="ชลบุรี", text="เมือง:ชลบุรี")),
+        QuickReplyButton(action=MessageAction(label="กาญจนบุรี", text="เมือง:กาญจนบุรี")),
         QuickReplyButton(action=MessageAction(label="ภูเก็ต", text="เมือง:ภูเก็ต")),
-        QuickReplyButton(action=MessageAction(label="ขอนแก่น", text="เมือง:ขอนแก่น"))
+        QuickReplyButton(action=MessageAction(label="เชียงใหม่", text="เมือง:เชียงใหม่")),
+        QuickReplyButton(action=MessageAction(label="ประจวบคีรีขันธ์", text="เมือง:ประจวบคีรีขันธ์")),
+        QuickReplyButton(action=MessageAction(label="เพชรบุรี", text="เมือง:เพชรบุรี")),
+        QuickReplyButton(action=MessageAction(label="พระนครศรีอยุธยา", text="เมือง:พระนครศรีอยุธยา")),
+        QuickReplyButton(action=MessageAction(label="สุราษฎร์ธานี", text="เมือง:สุราษฎร์ธานี")),
+        QuickReplyButton(action=MessageAction(label="นครราชสีมา", text="เมือง:นครราชสีมา")),
+        QuickReplyButton(action=MessageAction(label="กระบี่", text="เมือง:กระบี่")),
+        QuickReplyButton(action=MessageAction(label="เชียงราย", text="เมือง:เชียงราย")),
+        QuickReplyButton(action=MessageAction(label="สงขลา", text="เมือง:สงขลา")),
     ])
+
+# ---------------- Mapping ไทย → อังกฤษ ----------------
+city_map = {
+    "กรุงเทพมหานคร": "Bangkok",
+    "ชลบุรี": "Chonburi",
+    "กาญจนบุรี": "Kanchanaburi",
+    "ภูเก็ต": "Phuket",
+    "เชียงใหม่": "Chiang Mai",
+    "ประจวบคีรีขันธ์": "Prachuap Khiri Khan",
+    "เพชรบุรี": "Phetchaburi",
+    "พระนครศรีอยุธยา": "Ayutthaya",
+    "สุราษฎร์ธานี": "Surat Thani",
+    "นครราชสีมา": "Nakhon Ratchasima",
+    "กระบี่": "Krabi",
+    "เชียงราย": "Chiang Rai",
+    "สงขลา": "Songkhla"
+}
 
 # ---------------- Webhook ----------------
 @app.route("/callback", methods=['POST'])
@@ -208,7 +234,7 @@ def handle_message(event):
 
     # ----- STEP CITY -----
     if step=="city":
-        cities=["กรุงเทพ","เชียงใหม่","ภูเก็ต","ขอนแก่น"]
+        cities=list(city_map.keys())
         city=None
         for c in cities:
             if c in text:
@@ -219,7 +245,7 @@ def handle_message(event):
             if Levenshtein.distance(text,closest.lower())<=2:
                 city=closest
         if city:
-            aqi=get_aqi(city)
+            aqi=get_aqi(city_map.get(city, city))
             level, advice=assess_risk(user_data["age"],user_data["smoker"],user_data["family"],user_data["symptoms"],aqi)
             reply=f"""
 📌 แบบประเมินความเสี่ยงโรคหอบหืด
